@@ -1,6 +1,28 @@
 [package]
 name = "tracker-updater"
-version = "0.1.0"
-edition = "2024"
+version = "0.1.1"
+edition = "2021"
+description = "Утилита для автоматического обновления торрентов rutracker в qBittorrent."
+keywords = ["qbittorrent", "rutracker", "torrent", "updater"]
+categories = ["command-line-utilities"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+include = [
+    "src/**/*",         # Весь исходный код
+    "LICENSE-MIT",      # Лицензия
+    "LICENSE-APACHE",
+    "README.md",        
+    "favicon.ico",      # Иконка
+]
 
 [dependencies]
+log = "0.4.28"
+log4rs = "1.4.0"
+qbit-rs = "0.4.7"
+tokio = { version = "1", features = ["full"] }
+config = { version = "0.14", features = ["toml"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] } # "blocking" для синхронной
+serde = { version = "1", features = ["derive"] }
+
+

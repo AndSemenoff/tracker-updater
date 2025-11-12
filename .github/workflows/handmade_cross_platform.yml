@@ -1,0 +1,126 @@
+# .github/workflows/handmade_cross_platform.yml
+
+name: Build & Release (Cross-Platform)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Имя тега для релиза (например, v0.1.5)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  #--- ЗАДАНИЕ 1: СБОРКА ПОД WINDOWS ---
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      
+      - name: Prepare artifact
+        run: Move-Item -Path target/x86_64-pc-windows-msvc/release/tracker-updater.exe -Destination tracker-updater-windows.exe
+        shell: powershell
+
+      - name: Create ZIP archive
+        run: Compress-Archive -Path tracker-updater-windows.exe, README.md, icons/favicon.ico, LICENSE-MIT, LICENSE-APACHE, log4rs.yaml, config_example.toml -DestinationPath tracker-updater-windows.zip
+        shell: powershell
+
+      # Загружаем ZIP-архив как артефакт
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-asset
+          path: tracker-updater-windows.zip
+
+  #--- ЗАДАНИЕ 2: СБОРКА ПОД UBUNTU ---
+  build-ubuntu:
+    name: Build (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      
+      # Устанавливаем зависимости для сборки
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+        
+      - name: Build
+        # Собираем для GNU/Linux
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      
+      - name: Prepare artifact
+        run: mv target/x86_64-unknown-linux-gnu/release/tracker-updater tracker-updater-linux
+
+      # Архивируем в tar.gz, что является стандартом для Linux
+      - name: Create tar.gz archive
+        run: |
+          tar -czvf tracker-updater-linux.tar.gz \
+            tracker-updater-linux \
+            README.md \
+            icons/favicon.ico \
+            LICENSE-MIT \
+            LICENSE-APACHE \
+            log4rs.yaml \
+            config_example.toml
+
+      # Загружаем tar.gz архив как артефакт
+      - name: Upload Ubuntu artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-release-asset
+          path: tracker-updater-linux.tar.gz
+
+  #--- ЗАДАНИЕ 3: ПУБЛИКАЦИЯ РЕЛИЗА ---
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    # Запускаем только после успешного завершения обеих сборок
+    needs: [build-windows, build-ubuntu]
+    
+    # Разрешения нужны и здесь
+    permissions:
+      contents: write
+      
+    steps:
+      # Скачиваем артефакт Windows
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-asset
+          path: windows-asset # Скачиваем в папку 'windows-asset'
+
+      # Скачиваем артефакт Ubuntu
+      - name: Download Ubuntu artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-release-asset
+          path: ubuntu-asset # Скачиваем в папку 'ubuntu-asset'
+
+      # Создаем релиз и прикрепляем ОБА файла
+      - name: GH Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          files: |
+            windows-asset/tracker-updater-windows.zip
+            ubuntu-asset/tracker-updater-linux.tar.gz

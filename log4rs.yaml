@@ -1,0 +1,41 @@
+# Указываем, куда писать (appender)
+appenders:
+  # Пишем в консоль
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{m}{n}"
+    filters:
+      - kind: threshold
+        level: info
+        
+# Пишем в файл с ротацией
+  file:
+    kind: rolling_file # Меняем kind на rolling_file
+    path: "logs/my_app.log" # Путь к *текущему* файлу
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} [{l}] - {m}{n}"
+    
+    # Добавляем политику ротации
+    policy:
+      kind: compound # Используем "составную" политику
+      
+      # Триггер (когда срабатывать)
+      trigger:
+        kind: size # Срабатывать по размеру
+        limit: 10 mb # Указываем лимит (например, 10 мегабайт)
+        
+      # Роллер (что делать со старым файлом)
+      roller:
+        kind: fixed_window # Переименовывать старые файлы
+        # Шаблон для старых логов. {} будет заменено на 1, 2, 3...
+        pattern: "logs/my_app.{}.log" 
+        count: 5 # Сколько старых файлов хранить (my_app.1.log, my_app.2.log ... my_app.5.log)
+        base: 1 # Начинать нумерацию с 1
+
+# Глобальная настройка
+root:
+  level: debug # Уровень логов по умолчанию
+  appenders:
+    - stdout
+    - file     # Указываем, что нужно использовать оба аппендера

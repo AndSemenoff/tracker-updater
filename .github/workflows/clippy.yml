@@ -1,0 +1,52 @@
+# Имя воркфлоу, отображаемое в GitHub Actions
+name: Clippy Linter
+
+# События, которые запускают этот воркфлоу
+on:
+  # Запуск при push в указанные ветки
+  push:
+    branches: [ "main", "master" ]
+  # Запуск при создании или обновлении pull request, нацеленного на указанные ветки
+  pull_request:
+    branches: [ "main", "master" ]
+
+# Разрешения по умолчанию для GITHUB_TOKEN
+# Это хорошая практика для безопасности
+permissions:
+  contents: read # Требуется для 'actions/checkout'
+
+jobs:
+  # Единственное задание в этом воркфлоу
+  clippy_check:
+    # Имя задания, отображаемое в UI
+    name: Run Clippy Linter
+    # Используем последнюю версию Ubuntu в качестве операционной системы
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Клонирование репозитория
+      # 'actions/checkout' скачивает ваш код в рабочую директорию
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      # Шаг 2: Установка Rust тулчейна (цепочки инструментов)
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      # Шаг 3: Кэширование зависимостей Cargo
+      # Это значительно ускоряет сборку, избегая повторной загрузки
+      # и компиляции зависимостей при каждом запуске
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+
+      # Шаг 4: Запуск Clippy
+      # --all-targets: Проверяет все цели (библиотеки, бинарные файлы, тесты и т.д.)
+      # --all-features: Активирует все 'features' проекта
+      # -- -D warnings: (Важная часть) Трактует все предупреждения Clippy как ошибки,
+      # что приводит к "падению" воркфлоу, если найдены проблемы.
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings

@@ -1,0 +1,55 @@
+# .github/workflows/handmade_release.yml
+
+name: Build & Release (Windows Only)
+
+on:
+  #push:
+  #  tags:
+  #    - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Имя тега для релиза (например, v0.1.5)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # Задание для сборки под Windows
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      
+      # Кэширование зависимостей Cargo
+      # Это значительно ускоряет сборку, избегая повторной загрузки
+      # и компиляции зависимостей при каждом запуске
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      
+      - name: Prepare artifact
+        run: Move-Item -Path target/x86_64-pc-windows-msvc/release/tracker-updater.exe -Destination tracker-updater-windows.exe
+        shell: powershell # Явно указываем shell
+
+      # Архивируем все нужные файлы в один ZIP
+      - name: Create ZIP archive
+        run: Compress-Archive -Path tracker-updater-windows.exe, README.md, icons/favicon.ico, LICENSE-MIT, LICENSE-APACHE, log4rs.yaml, config_example.toml -DestinationPath tracker-updater-windows.zip
+        shell: powershell
+
+      # Загружаем только ОДИН файл: наш новый ZIP
+      # https://github.com/marketplace/actions/gh-release
+      - name: GH Release
+        uses: softprops/action-gh-release@v2.4.2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          files: tracker-updater-windows.zip
