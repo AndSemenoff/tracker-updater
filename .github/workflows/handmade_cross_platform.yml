@@ -19,14 +19,16 @@ jobs:
     name: Build (Windows)
     runs-on: windows-latest
     steps:
+      # https://github.com/marketplace/actions/checkout
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      
+
+      # https://github.com/marketplace/actions/rust-cache
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@v2.8.1
 
       - name: Build
         run: cargo build --release --target x86_64-pc-windows-msvc
