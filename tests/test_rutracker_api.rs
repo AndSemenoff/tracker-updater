@@ -1,4 +1,6 @@
 // tests/test_rutracker_api.rs
+use tracker_updater::rutracker_api::get_api_peer_stats_by_hash_async;
+use tracker_updater::torrent::Torrent;
 
 // Импортируем публичные функции из нашего крейта
 use tracker_updater::rutracker_api::{
@@ -127,5 +129,61 @@ async fn test_get_api_torrent_hash_by_id_empty_and_types() {
         map_u32.get("2142"),
         Some(&Some(expected_hash)),
         "Ключ '2142' (из u32) не найден или хэш неверен"
+    );
+}
+
+#[tokio::test]
+async fn test_get_api_peer_stats_by_hash() {
+    let mut torrents = vec![
+        Torrent {
+            name: "Test 1".to_string(),
+            torrent_hash: "658EDAB6AF0B424E62FEFEC0E39DBE2AC55B9AE3".to_string(),
+            torrent_id: "2142".to_string(),
+            tracker: "".to_string(),
+            comment: "".to_string(),
+            state: "".to_string(),
+            category: "".to_string(),
+            tags: "".to_string(),
+            size: 0,
+            seeders: 0,
+            leechers: 0,
+            save_path: "".to_string(),
+        },
+        Torrent {
+            name: "Test invalid".to_string(),
+            torrent_hash: "INVALIDHASH123".to_string(),
+            torrent_id: "9999999".to_string(),
+            tracker: "".to_string(),
+            comment: "".to_string(),
+            state: "".to_string(),
+            category: "".to_string(),
+            tags: "".to_string(),
+            size: 0,
+            seeders: 0,
+            leechers: 0,
+            save_path: "".to_string(),
+        },
+    ];
+
+    let result = get_api_peer_stats_by_hash_async(&mut torrents).await;
+
+    assert!(result.is_ok());
+
+    let problematic_ids = result.unwrap();
+
+    // Хеш 658EDAB6AF0B424E62FEFEC0E39DBE2AC55B9AE3 должен быть обновлен
+    assert!(
+        torrents[0].seeders > 0,
+        "Сиды должны обновиться для валидного хеша"
+    );
+    assert_eq!(
+        torrents[0].leechers, 0,
+        "Личи всегда должны быть 0 в новом API"
+    );
+
+    // Неверный хеш возвращается как problematic_id
+    assert!(
+        problematic_ids.contains(&"9999999".to_string()),
+        "Недействительный ID должен попасть в проблемные"
     );
 }

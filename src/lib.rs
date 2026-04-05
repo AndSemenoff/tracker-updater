@@ -342,7 +342,7 @@ async fn handle_update(
                 torrent.torrent_id,
                 e
             );
-            return Err(Box::new(e));
+            return Err(e.into()); //return Err(Box::new(e));
         }
     };
 

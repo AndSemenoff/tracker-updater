@@ -10,12 +10,11 @@ use qbit_rs::{
     Qbit,
 };
 
-
-use tracker_updater::{run_helper, rutracker_api, Config}; // Config теперь наша структура из lib.rs
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::path::Path;
 use tokio::fs;
+use tracker_updater::{run_helper, rutracker_api, Config}; // Config теперь наша структура из lib.rs
 
 // --- Константы для теста ---
 const TORRENT_FILE_1: &str = "tests/test-files/old1.torrent";
@@ -279,7 +278,9 @@ async fn cleanup(client: &Qbit, hashes: Vec<String>, save_paths: Vec<&str>) {
                     Err(e) => {
                         log::error!(
                             " -> Попытка {}: Не удалось удалить директорию {}: {}",
-                            attempts, path, e
+                            attempts,
+                            path,
+                            e
                         );
                         if attempts >= MAX_ATTEMPTS {
                             log::error!(" -> ДОСТИГНУТ ЛИМИТ ПОПЫТОК. Пропускаем...");
@@ -298,7 +299,7 @@ async fn cleanup(client: &Qbit, hashes: Vec<String>, save_paths: Vec<&str>) {
 
 #[tokio::test]
 #[ignore] // Этот тест тяжелый и требует config.toml, .torrent файлы и живой qBit
-// запуск только этого теста: cargo test --test test_update_logic -- test_full_update_scenario --ignored --nocapture
+          // запуск только этого теста: cargo test --test test_update_logic -- test_full_update_scenario --ignored --nocapture
 async fn test_full_update_scenario() {
     // --- 0. ПРОВЕРКА ---
     // Убедимся, что .torrent файлы на месте
@@ -462,7 +463,7 @@ async fn test_full_update_scenario() {
 
 #[tokio::test]
 #[ignore] // Этот тест тяжелый и требует config.toml, .torrent файлы и живой qBit
-// cargo test --test test_update_logic -- test_update_preserves_category_and_tags --ignored --nocapture
+          // cargo test --test test_update_logic -- test_update_preserves_category_and_tags --ignored --nocapture
 async fn test_update_preserves_category_and_tags() {
     // --- 0. КОНСТАНТЫ ---
     const TEST_CATEGORY: &str = "test-category";
@@ -673,15 +674,12 @@ async fn test_update_preserves_category_and_tags() {
 
 #[tokio::test]
 #[ignore] // Это также интеграционный тест, требующий живого qBit
-// запуск командой: cargo test --test test_update_logic -- --ignored --nocapture
-// запуск конкретно этого теста: cargo test --test test_update_logic -- test_dry_run_scenario --ignored --nocapture
+          // запуск командой: cargo test --test test_update_logic -- --ignored --nocapture
+          // запуск конкретно этого теста: cargo test --test test_update_logic -- test_dry_run_scenario --ignored --nocapture
 async fn test_dry_run_scenario() {
     // --- 0. ПРОВЕРКА ФАЙЛОВ ---
     if !Path::new(TORRENT_FILE_1).exists() {
-        panic!(
-            "Тестовый файл '{}' не найден.",
-            TORRENT_FILE_1
-        );
+        panic!("Тестовый файл '{}' не найден.", TORRENT_FILE_1);
     }
 
     // Инициализируем логгер
@@ -690,12 +688,12 @@ async fn test_dry_run_scenario() {
     // --- 1. НАСТРОЙКА (Dry Run Test) ---
     log::info!("--- 1. Настройка (Dry Run Test) ---");
     let client = setup_client().await;
-    
+
     // Загружаем конфиг...
     let mut config = setup_config();
     // ... И ПРИНУДИТЕЛЬНО ВЫСТАВЛЯЕМ DRY_RUN = TRUE
     config.dry_run = true;
-    
+
     log::warn!("--- 🟢 ПРИНУДИТЕЛЬНАЯ УСТАНОВКА: dry_run = true для этого теста ---");
 
     // --- 1. Начальная очистка ---
@@ -718,7 +716,7 @@ async fn test_dry_run_scenario() {
     cleanup(&client, hashes_to_delete, vec![SAVE_PATH_1]).await;
 
     log::info!("--- 1. Добавление тестового торрента (Dry Run Test) ---");
-    
+
     // Добавляем один старый торрент
     let (old_hash_1, _id_1) = add_test_torrent(&client, TORRENT_FILE_1, SAVE_PATH_1)
         .await
@@ -780,7 +778,10 @@ async fn test_dry_run_scenario() {
         old_hash_1
     );
 
-    log::info!("✅ Проверка Dry Run УСПЕШНА: Старый торрент {} остался на месте.", old_hash_1);
+    log::info!(
+        "✅ Проверка Dry Run УСПЕШНА: Старый торрент {} остался на месте.",
+        old_hash_1
+    );
     log::info!("Обновление было корректно пропущено.");
 
     // --- 4. ОЧИСТКА ---

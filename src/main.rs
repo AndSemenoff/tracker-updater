@@ -1,8 +1,8 @@
 // src/main.rs
 
 use config::{Config as ConfigBuilder, File};
-use tracker_updater::{run_helper, Config};
 use std::error::Error;
+use tracker_updater::{run_helper, Config};
 
 /// Главная асинхронная функция, обрабатывающая ошибки
 /// Теперь она отвечает только за настройку и запуск
