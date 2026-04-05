@@ -7,6 +7,7 @@
 pub mod rutracker_api;
 pub mod torrent;
 
+use anyhow::{Context, Result};
 use qbit_rs::{
     model::{AddTorrentArg, Credential, TorrentFile, TorrentSource},
     Qbit,
@@ -16,7 +17,6 @@ use rutracker_api::{
     get_api_torrent_hash_by_id_async,
 };
 use std::collections::HashMap;
-use std::error::Error;
 use torrent::Torrent;
 
 use reqwest::header::{HeaderMap, HeaderValue, COOKIE, USER_AGENT};
@@ -61,7 +61,7 @@ pub struct Config {
 /// Главная функция-координатор логики (ранее была в main.rs)
 ///
 /// Принимает структуру конфигурации и выполняет всю работу.
-pub async fn run_helper(config: Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_helper(config: Config) -> Result<()> {
     // 1. Настройка клиентов на основе конфига
 
     // Клиент для скачивания .torrent файлов
@@ -84,10 +84,8 @@ pub async fn run_helper(config: Config) -> Result<(), Box<dyn Error>> {
     // Прокидываем флаг dry_run в основную логику
     if let Err(e) = process_torrents(&client, &client_for_download, &headers, config.dry_run).await
     {
-        log::error!("❌ Ошибка при обработке торрентов: {}", e);
-        log::error!("Это также может быть ошибкой входа (неверный пароль) или подключения.");
-        log::error!("Убедитесь, что qBittorrent запущен и учетные данные верны.");
-        return Err(e);
+        // Оборачиваем ошибку в дополнительный контекст
+        return Err(e).context("❌ Ошибка при обработке торрентов. Убедитесь, что qBittorrent запущен и учетные данные верны.");
     }
 
     Ok(())
@@ -103,7 +101,7 @@ async fn process_torrents(
     client_for_download: &Client,
     headers: &HeaderMap,
     dry_run: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<()> {
     // 1. Получаем список наших торрентов из qBittorrent
     let mut my_torrents = match get_qbit_torrents(client).await {
         Ok(torrents) => torrents,
@@ -179,7 +177,7 @@ async fn process_torrents(
 }
 
 /// Шаг 1: Получение и парсинг торрентов из qBittorrent
-async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>, Box<dyn Error>> {
+async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
     let torrents_info = client.get_torrent_list(Default::default()).await?;
     log::debug!("--- Обработка торрентов ({} шт.) ---", torrents_info.len());
 
@@ -251,7 +249,7 @@ async fn handle_problematic_torrents(
     client_for_download: &Client,
     headers: &HeaderMap,
     dry_run: bool,
-) -> Result<(u32, u32), Box<dyn Error>> {
+) -> Result<(u32, u32)> {
     let mut updates_count = 0;
     let mut deletions_count = 0;
 
@@ -315,7 +313,7 @@ async fn handle_update(
     client_for_download: &Client,
     headers: &HeaderMap,
     dry_run: bool,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool> {
     log::warn!(
         "🔄 ОБНОВЛЕНИЕ: Торрент '{}' (ID: {}) обновлен на трекере.",
         torrent.name,
@@ -333,18 +331,12 @@ async fn handle_update(
     }
 
     // 1. Парсим ID
-    let topic_id: u64 = match torrent.torrent_id.parse() {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!(
-                "❌ Не удалось спарсить ID торрента '{}' (ID: {}) в u64: {}",
-                torrent.name,
-                torrent.torrent_id,
-                e
-            );
-            return Err(e.into()); //return Err(Box::new(e));
-        }
-    };
+    let topic_id: u64 = torrent.torrent_id.parse().with_context(|| {
+        format!(
+            "❌ Не удалось спарсить ID торрента '{}' (ID: {}) в u64",
+            torrent.name, torrent.torrent_id
+        )
+    })?;
 
     // 2. Скачиваем новый .torrent файл
     log::debug!("Скачивание t{}.torrent...", topic_id);
@@ -395,11 +387,7 @@ async fn handle_update(
 }
 
 /// Действие: Удалить торрент
-async fn handle_deletion(
-    client: &Qbit,
-    torrent: &Torrent,
-    dry_run: bool,
-) -> Result<bool, Box<dyn Error>> {
+async fn handle_deletion(client: &Qbit, torrent: &Torrent, dry_run: bool) -> Result<bool> {
     log::warn!(
         "❌ УДАЛЕН: Торрент '{}' (ID: {}) удален с трекера.",
         torrent.name,
@@ -446,17 +434,13 @@ async fn add_torrent_from_file(
     save_path: &str,
     category: &str,
     tags: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     log::debug!("Чтение файла торрента: {}", file_path);
 
     // 1. Чтение .torrent файла
-    let torrent_content = match fs::read(file_path).await {
-        Ok(content) => content,
-        Err(e) => {
-            log::error!("❌ Ошибка: Не удалось прочитать файл '{}'.", file_path);
-            return Err(e.into());
-        }
-    };
+    let torrent_content = fs::read(file_path)
+        .await
+        .with_context(|| format!("❌ Ошибка: Не удалось прочитать файл '{}'", file_path))?;
 
     // 2. Создаем TorrentFile
     let torrent_file = TorrentFile {
@@ -485,30 +469,12 @@ async fn add_torrent_from_file(
         .category(category.to_string())
         .build();
 
-    /*
-    if !category.is_empty() {
-        log::debug!("    -> Установка категории: {}", category);
-        arg_builder = arg_builder.category(category.to_string());
-    }
-
-    // (НОВОЕ) Добавляем теги, если они не пустые
-    if !tags.is_empty() {
-        log::debug!("    -> Установка тегов: {}", tags);
-        arg_builder = arg_builder.tags(tags.to_string());
-    }
-
-    let arg = arg_builder.build(); // Собираем аргументы
-
-     */
-    // (НОВОЕ) Добавляем категорию, если она не пустая
-
     // 5. Вызываем client.add_torrent
     log::debug!("Отправка файла торрента в qBittorrent...");
-    match client.add_torrent(arg).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            log::error!("❌ Ошибка при добавлении торрента из файла: {}", e);
-            Err(e.into())
-        }
-    }
+    client
+        .add_torrent(arg)
+        .await
+        .with_context(|| "❌ Ошибка при добавлении торрента из файла в qBittorrent")?;
+
+    Ok(())
 }

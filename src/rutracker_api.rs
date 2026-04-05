@@ -1,13 +1,14 @@
 // src/rutracker_api.rs
 
-use crate::torrent; // <-- Импортируем нашу структуру Torrent
+use crate::torrent;
+use anyhow::{Context, Result};
 use reqwest::header::{self, HeaderMap};
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt;
 
-use tokio::io::AsyncWriteExt; // <-- Импортируем для асинхронной записи в файл
+use tokio::io::AsyncWriteExt;
 
 // --- КОНСТАНТЫ API ---
 const API_LIMIT_URL: &str = "https://api.rutracker.cc/v1/get_limit";
@@ -29,11 +30,13 @@ struct ResultDataLimit {
 
 /// Вспомогательная функция для получения лимита API от rutracker.cc
 /// Возвращает Result с числом лимита или ошибкой
-pub async fn get_api_limit_async() -> Result<u32, Box<dyn std::error::Error>> {
+pub async fn get_api_limit_async() -> Result<u32> {
     let response_data: ApiResponseLimit = reqwest::get(API_LIMIT_URL)
-        .await?
+        .await
+        .context("Ошибка при выполнении запроса к API лимитов")?
         .json::<ApiResponseLimit>()
-        .await?;
+        .await
+        .context("Ошибка при десериализации ответа лимитов")?;
 
     Ok(response_data.result.limit)
 }
@@ -45,18 +48,6 @@ pub fn extract_torrent_id_from_comment(comment: &str) -> String {
         .map(|(_, id)| id.to_string())
         .unwrap_or_default()
 }
-
-// --- СТРУКТУРЫ ДЛЯ get_peer_stats ---
-
-// [seeders, leechers, seeder_last_seen, [keepers]]
-//#[derive(Deserialize, Debug)]
-//struct PeerStats(u32, u32, i64, Vec<u32>);
-
-//#[derive(Deserialize, Debug)]
-//struct ApiResponsePeerStats {
-// Значение Option<PeerStats> для обработки `null`
-//    result: std::collections::HashMap<String, Option<PeerStats>>,
-//}
 
 #[derive(Deserialize, Debug)]
 struct TopicData {
@@ -107,7 +98,7 @@ fn extract_invalid_hash(error_text: &str) -> Option<&str> {
 /// которые не были найдены на Rutracker (null или invalid hash).
 pub async fn get_api_peer_stats_by_hash_async(
     my_torrents: &mut [torrent::Torrent],
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>> {
     let limit = match get_api_limit_async().await {
         Ok(lim) => (lim as usize).min(50), // Принудительное ограничение до 50
         Err(e) => {
@@ -220,7 +211,7 @@ pub async fn get_api_peer_stats_by_hash_async(
 /// где ключ - это ID, а значение - хэш или `None`, если ID не найден.
 pub async fn get_api_torrent_hash_by_id_async<T>(
     ids: &[T],
-) -> Result<HashMap<String, Option<String>>, Box<dyn std::error::Error>>
+) -> Result<HashMap<String, Option<String>>>
 where
     T: fmt::Display,
 {
@@ -279,7 +270,7 @@ pub async fn download_torrent(
     client: &Client,
     headers: &HeaderMap,
     topic_id: u64,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String> {
     // 1. Формируем URL и имя файла динамически
     let download_url = format!("https://rutracker.org/forum/dl.php?t={}", topic_id);
     let output_filename = format!("t{}.torrent", topic_id);
@@ -324,10 +315,9 @@ pub async fn download_torrent(
         log::error!("Сервер не вернул .torrent файл. Вероятно, ваша 'bb_session' cookie устарела.");
 
         // Возвращаем новую ошибку, чтобы `main` мог ее обработать
-        Err(format!(
+        Err(anyhow::anyhow!(
             "Ошибка скачивания: сервер не вернул .torrent файл (статус: {}).",
             download_response.status()
-        )
-        .into())
+        ))
     }
 }
