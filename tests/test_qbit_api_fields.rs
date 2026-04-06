@@ -92,7 +92,7 @@ async fn dump_all_torrent_fields() {
     // !!! СКОРЕЕ ВСЕГО, `magnet_uri` БУДЕТ ПРЯМО ЗДЕСЬ !!!
     //
     println!("\n--- 1. Поля из `TorrentInfo` (ответ get_torrent_list) ---");
-    // println!("{:#?}", first_torrent_info);
+    println!("{:#?}", first_torrent_info);
     println!("Magnet: {:#?}", first_torrent_info.magnet_uri);
 
     // --- 6. ПОЛУЧАЕМ И ВЫВОДИМ ВСЕ ПОЛЯ ИЗ TorrentProperties ---

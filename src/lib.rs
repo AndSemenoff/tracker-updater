@@ -13,7 +13,7 @@ use qbit_rs::{
     Qbit,
 };
 use rutracker_api::{
-    extract_torrent_id_from_comment, get_api_peer_stats_by_hash_async,
+    extract_torrent_id_from_comment, get_api_limit_async, get_api_peer_stats_by_hash_async,
     get_api_torrent_hash_by_id_async,
 };
 use std::collections::HashMap;
@@ -21,10 +21,9 @@ use torrent::Torrent;
 
 use reqwest::header::{HeaderMap, HeaderValue, COOKIE, USER_AGENT};
 use reqwest::Client;
-use serde::Deserialize; // <-- ДОБАВЛЕНО для config
+use serde::Deserialize;
 use tokio::fs;
 
-/// Инициализация логгера с использованием log4rs
 pub fn init_logger() {
     match log4rs::init_file("log4rs.yaml", Default::default()) {
         Ok(_) => log::debug!("log4rs.yaml загружен, логгер инициализирован."),
@@ -35,7 +34,6 @@ pub fn init_logger() {
     }
 }
 
-/// Конфигурация qBittorrent клиента
 #[derive(Deserialize, Debug)]
 pub struct QbitConfig {
     pub url: String,
@@ -43,14 +41,11 @@ pub struct QbitConfig {
     pub password: String,
 }
 
-/// Конфигурация Rutracker API
 #[derive(Deserialize, Debug)]
 pub struct RutrackerConfig {
     pub bb_session_cookie: String,
 }
 
-/// Структура конфигурации для запуска хелпера
-/// #[derive(Deserialize)] автоматически реализует загрузку из файла
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub dry_run: bool,
@@ -58,51 +53,33 @@ pub struct Config {
     pub rutracker: RutrackerConfig,
 }
 
-/// Главная функция-координатор логики (ранее была в main.rs)
-///
-/// Принимает структуру конфигурации и выполняет всю работу.
 pub async fn run_helper(config: Config) -> Result<()> {
-    // 1. Настройка клиентов на основе конфига
-
-    // Клиент для скачивания .torrent файлов
     let client_for_download = Client::builder().build()?;
 
-    // Создаем заголовки
     let mut headers = HeaderMap::new();
-    // Используем новое поле из конфига
     let cookie_string = format!("bb_session={}", config.rutracker.bb_session_cookie);
     headers.insert(COOKIE, HeaderValue::from_str(&cookie_string)?);
     headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"));
 
     log::info!("Подключение к {}...", config.qbit.url);
 
-    // Клиент qBittorrent
     let credential = Credential::new(config.qbit.username.clone(), config.qbit.password.clone());
     let client = Qbit::new(config.qbit.url.as_str(), credential);
 
-    // 2. Запуск основного процесса
-    // Прокидываем флаг dry_run в основную логику
     if let Err(e) = process_torrents(&client, &client_for_download, &headers, config.dry_run).await
     {
-        // Оборачиваем ошибку в дополнительный контекст
         return Err(e).context("❌ Ошибка при обработке торрентов. Убедитесь, что qBittorrent запущен и учетные данные верны.");
     }
 
     Ok(())
 }
 
-// -----------------------------------------------------------------
-// --- ВСЕ ОСТАЛЬНЫЕ ФУНКЦИИ (приватные, без `pub`) ---
-// -----------------------------------------------------------------
-
-/// Координатор: получает данные, сравнивает, запускает обновление/удаление
 async fn process_torrents(
     client: &Qbit,
     client_for_download: &Client,
     headers: &HeaderMap,
     dry_run: bool,
 ) -> Result<()> {
-    // 1. Получаем список наших торрентов из qBittorrent
     let mut my_torrents = match get_qbit_torrents(client).await {
         Ok(torrents) => torrents,
         Err(e) => {
@@ -121,12 +98,19 @@ async fn process_torrents(
         my_torrents.len()
     );
 
-    // 2. Обновляем статистику сидов/личей с Rutracker
+    // Запрашиваем лимит один раз для всех последующих запросов API!
+    let api_limit = match get_api_limit_async().await {
+        Ok(lim) => (lim as usize).min(50),
+        Err(e) => {
+            log::warn!("⚠️ Не удалось получить лимит API, используем 20: {}", e);
+            20
+        }
+    };
+
     log::debug!("--- Обновление статистики (сиды/личи) с Rutracker ---");
-    let problematic_ids = get_api_peer_stats_by_hash_async(&mut my_torrents).await?;
+    let problematic_ids = get_api_peer_stats_by_hash_async(&mut my_torrents, api_limit).await?;
     log::debug!("✅ Статистика успешно обновлена.");
 
-    // 3. Если есть проблемные (ненайденные по хешу) торренты, разбираемся с ними
     let (updates_count, deletions_count) = if !problematic_ids.is_empty() {
         log::warn!(
             "--- ⚠️ Обнаружены проблемные торренты (не найдены на Rutracker): {} шт. ---",
@@ -134,7 +118,7 @@ async fn process_torrents(
         );
         log::debug!("Запрос хешей для проблемных ID...");
 
-        let hashes_map = get_api_torrent_hash_by_id_async(&problematic_ids).await?;
+        let hashes_map = get_api_torrent_hash_by_id_async(&problematic_ids, api_limit).await?;
         log::debug!("Получены хеши для {} ID. Анализ...", hashes_map.len());
 
         handle_problematic_torrents(
@@ -147,7 +131,6 @@ async fn process_torrents(
         )
         .await?
     } else {
-        // Если проблемных ID не было, то и действий 0
         (0, 0)
     };
 
@@ -159,7 +142,6 @@ async fn process_torrents(
                 deletions_count
             );
         } else {
-            // Если мы в dry_run, но *были бы* действия
             log::info!(
                 "--- 📊 Сводка (Dry Run): Было бы обновлено: {}, Было бы удалено: {} ---",
                 updates_count,
@@ -167,16 +149,12 @@ async fn process_torrents(
             );
         }
     } else {
-        // Либо не было проблемных, либо проблемные не привели к действиям
         log::info!("--- 📊 Сводка: Все торренты актуальны. Обновлений не найдено. ---");
     }
 
-    // 4. Выводим итог
-    // log_summary(&my_torrents);
     Ok(())
 }
 
-/// Шаг 1: Получение и парсинг торрентов из qBittorrent
 async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
     let torrents_info = client.get_torrent_list(Default::default()).await?;
     log::debug!("--- Обработка торрентов ({} шт.) ---", torrents_info.len());
@@ -185,7 +163,8 @@ async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
 
     for torrent_info in torrents_info.iter() {
         let name = torrent_info.name.clone().unwrap_or_default();
-        let hash = torrent_info.hash.clone().unwrap_or_default();
+        // СРАЗУ приводим хеш к нижнему регистру, чтобы избежать аллокаций при поиске
+        let hash = torrent_info.hash.clone().unwrap_or_default().to_lowercase();
 
         if hash.is_empty() {
             log::warn!("⚠️ Торрент '{}' пропущен (отсутствует хеш)!", name);
@@ -194,15 +173,9 @@ async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
 
         let tracker = torrent_info.tracker.clone().unwrap_or_default();
         if !tracker.contains("rutracker") {
-            log::debug!(
-                "Пропущен (не Rutracker): {} (трекер: {})",
-                name.chars().take(20).collect::<String>(),
-                tracker.chars().take(20).collect::<String>()
-            );
-            continue; // Пропускаем этот торрент, переходим к следующему
+            continue;
         }
 
-        // Получаем путь сохранения
         let save_path = torrent_info.save_path.clone().unwrap_or_default();
 
         match client.get_torrent_properties(&hash).await {
@@ -241,7 +214,6 @@ async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
     Ok(my_torrents)
 }
 
-/// Шаг 3: Цикл по проблемным торрентам для принятия решения
 async fn handle_problematic_torrents(
     client: &Qbit,
     my_torrents: &[Torrent],
@@ -256,10 +228,8 @@ async fn handle_problematic_torrents(
     for torrent in my_torrents.iter().filter(|t| !t.torrent_id.is_empty()) {
         if let Some(hash_option) = hashes_map.get(&torrent.torrent_id) {
             match hash_option {
-                // СЛУЧАЙ 1: Торрент НАЙДЕН (хеш есть)
                 Some(new_hash) => {
                     if !new_hash.eq_ignore_ascii_case(&torrent.torrent_hash) {
-                        // Хеши не совпадают = ОБНОВЛЕНИЕ
                         match handle_update(
                             client,
                             torrent,
@@ -270,42 +240,27 @@ async fn handle_problematic_torrents(
                         )
                         .await
                         {
-                            Ok(true) => updates_count += 1,  // Реальное обновление
-                            Ok(false) => updates_count += 1, // Считаем dry-run, чтобы показать в сводке
-                            Err(e) => {
-                                log::error!(
-                                    "❌ Ошибка при обновлении торрента {}: {}",
-                                    torrent.name,
-                                    e
-                                )
-                            }
-                        }
-                    } else {
-                        log::debug!(
-                            "Торрент '{}' (ID: {}) найден по ID, и хеш ({}) совпадает.",
-                            torrent.name,
-                            torrent.torrent_id,
-                            torrent.torrent_hash
-                        );
-                    }
-                }
-                // СЛУЧАЙ 2: Торрент НЕ НАЙДЕН (хеш = null) = УДАЛЕНИЕ
-                None => {
-                    match handle_deletion(client, torrent, dry_run).await {
-                        Ok(true) => deletions_count += 1,  // Реальное удаление
-                        Ok(false) => deletions_count += 1, // Считаем dry-run, чтобы показать в сводке
-                        Err(e) => {
-                            log::error!("❌ Ошибка при удалении торрента {}: {}", torrent.name, e)
+                            Ok(_) => updates_count += 1,
+                            Err(e) => log::error!(
+                                "❌ Ошибка при обновлении торрента {}: {}",
+                                torrent.name,
+                                e
+                            ),
                         }
                     }
                 }
+                None => match handle_deletion(client, torrent, dry_run).await {
+                    Ok(_) => deletions_count += 1,
+                    Err(e) => {
+                        log::error!("❌ Ошибка при удалении торрента {}: {}", torrent.name, e)
+                    }
+                },
             }
         }
     }
     Ok((updates_count, deletions_count))
 }
 
-/// Действие: Обновить торрент
 async fn handle_update(
     client: &Qbit,
     torrent: &Torrent,
@@ -326,29 +281,16 @@ async fn handle_update(
     );
 
     if dry_run {
-        log::warn!("🟢 DRY-RUN: Обновление пропущено (включен пробный запуск).");
         return Ok(false);
     }
 
-    // 1. Парсим ID
-    let topic_id: u64 = torrent.torrent_id.parse().with_context(|| {
-        format!(
-            "❌ Не удалось спарсить ID торрента '{}' (ID: {}) в u64",
-            torrent.name, torrent.torrent_id
-        )
-    })?;
+    let topic_id: u64 = torrent
+        .torrent_id
+        .parse()
+        .with_context(|| format!("❌ Не удалось спарсить ID торрента '{}'", torrent.name))?;
 
-    // 2. Скачиваем новый .torrent файл
-    log::debug!("Скачивание t{}.torrent...", topic_id);
     let torrent_file_path =
         rutracker_api::download_torrent(client_for_download, headers, topic_id).await?;
-    log::debug!(
-        "Файл {} скачан. Добавление в qBittorrent...",
-        torrent_file_path
-    );
-
-    // 3. Добавляем новый торрент в qBittorrent
-    log::debug!("--- Попытка добавить торрент из ФАЙЛА ---");
 
     if let Err(e) = add_torrent_from_file(
         client,
@@ -363,71 +305,31 @@ async fn handle_update(
         let _ = fs::remove_file(&torrent_file_path).await;
         return Err(e);
     }
-    log::info!(
-        "✅ Новый торрент ({}) успешно добавлен в qBittorrent (путь: {}).",
-        torrent_file_path,
-        torrent.save_path
-    );
 
-    // 4. Удаляем временный .torrent файл
     fs::remove_file(&torrent_file_path).await?;
-    log::debug!("Временный файл {} удален.", torrent_file_path);
 
-    // Шаг 5. Удаляем СТАРЫЙ торрент
-    log::info!(
-        "Удаление старого торрента (хеш: {})...",
-        torrent.torrent_hash
-    );
     let hashes_to_delete = vec![torrent.torrent_hash.clone()];
-    // НЕ удаляем файлы (false), так как они нужны новому торренту
     client.delete_torrents(hashes_to_delete, false).await?;
-    log::info!("✅ Старый торрент успешно удален (файлы сохранены).");
 
     Ok(true)
 }
 
-/// Действие: Удалить торрент
 async fn handle_deletion(client: &Qbit, torrent: &Torrent, dry_run: bool) -> Result<bool> {
     log::warn!(
         "❌ УДАЛЕН: Торрент '{}' (ID: {}) удален с трекера.",
         torrent.name,
         torrent.torrent_id
     );
-    log::info!(
-        "Попытка удаления из qBittorrent (хеш: {})...",
-        torrent.torrent_hash
-    );
 
     if dry_run {
-        log::warn!("🟢 DRY-RUN: Удаление пропущено (включен пробный запуск).");
         return Ok(false);
     }
 
-    // Удаляем торрент И ЕГО ФАЙЛЫ (true), так как он больше не нужен
     let hashes_to_delete = vec![torrent.torrent_hash.clone()];
     client.delete_torrents(hashes_to_delete, true).await?;
-    log::info!("Успешно удален из qBittorrent (включая файлы).");
-
     Ok(true)
 }
 
-/// Шаг 4: Вывод итоговой сводки
-fn _log_summary(my_torrents: &[Torrent]) {
-    let count = my_torrents.len();
-    let start_index = count.saturating_sub(6);
-
-    log::debug!(
-        "--- Собранный массив (показаны последние {} из {} шт.) ---",
-        std::cmp::min(6, count),
-        count
-    );
-
-    for torrent in my_torrents.iter().skip(start_index) {
-        log::debug!("{:?}", torrent);
-    }
-}
-
-/// Функция для добавления торрента из .torrent файла
 async fn add_torrent_from_file(
     client: &Qbit,
     file_path: &str,
@@ -435,33 +337,19 @@ async fn add_torrent_from_file(
     category: &str,
     tags: &str,
 ) -> Result<()> {
-    log::debug!("Чтение файла торрента: {}", file_path);
-
-    // 1. Чтение .torrent файла
     let torrent_content = fs::read(file_path)
         .await
         .with_context(|| format!("❌ Ошибка: Не удалось прочитать файл '{}'", file_path))?;
 
-    // 2. Создаем TorrentFile
     let torrent_file = TorrentFile {
         data: torrent_content,
         filename: file_path.to_string(),
     };
 
-    // 3. Создаем TorrentSource
     let torrent_source = TorrentSource::TorrentFiles {
         torrents: vec![torrent_file],
     };
 
-    // 4. Создаем AddTorrentArg (с указанием savepath)
-    /*
-    let arg = AddTorrentArg::builder()
-        .source(torrent_source)
-        .savepath(save_path.to_string())
-        .build();
-    */
-
-    // 4. (ИЗМЕНЕНО) Создаем AddTorrentArg (с указанием savepath, category, tags)
     let arg = AddTorrentArg::builder()
         .source(torrent_source)
         .savepath(save_path.to_string())
@@ -469,8 +357,6 @@ async fn add_torrent_from_file(
         .category(category.to_string())
         .build();
 
-    // 5. Вызываем client.add_torrent
-    log::debug!("Отправка файла торрента в qBittorrent...");
     client
         .add_torrent(arg)
         .await

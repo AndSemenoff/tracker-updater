@@ -67,7 +67,7 @@ async fn test_get_api_torrent_hash_by_id_basic() {
 
     // 2. Вызываем асинхронную функцию
 
-    let result = get_api_torrent_hash_by_id_async(&ids_to_test).await;
+    let result = get_api_torrent_hash_by_id_async(&ids_to_test, 10).await;
     // 3. Проверяем, что запрос завершился успешно (Result::Ok)
     assert!(
         result.is_ok(),
@@ -108,7 +108,7 @@ async fn test_get_api_torrent_hash_by_id_basic() {
 async fn test_get_api_torrent_hash_by_id_empty_and_types() {
     // 1. Тест с пустым вектором
     let empty_ids: Vec<u32> = vec![];
-    let result_empty = get_api_torrent_hash_by_id_async(&empty_ids).await;
+    let result_empty = get_api_torrent_hash_by_id_async(&empty_ids, 10).await;
 
     assert!(result_empty.is_ok(), "Запрос с пустым вектором не удался");
     assert!(
@@ -118,7 +118,7 @@ async fn test_get_api_torrent_hash_by_id_empty_and_types() {
 
     // 2. Тест с u32 (проверка дженерика <T>)
     let u32_ids = vec![2142];
-    let result_u32 = get_api_torrent_hash_by_id_async(&u32_ids).await;
+    let result_u32 = get_api_torrent_hash_by_id_async(&u32_ids, 10).await;
     assert!(result_u32.is_ok());
 
     let map_u32 = result_u32.unwrap();
@@ -136,8 +136,9 @@ async fn test_get_api_torrent_hash_by_id_empty_and_types() {
 async fn test_get_api_peer_stats_by_hash() {
     let mut torrents = vec![
         Torrent {
-            name: "Test 1".to_string(),
-            torrent_hash: "658EDAB6AF0B424E62FEFEC0E39DBE2AC55B9AE3".to_string(),
+            name: "Test valid".to_string(), // Имя может отличаться в вашем коде
+            // СТРОКА НИЖЕ ИЗМЕНЕНА: хеш переведен в нижний регистр
+            torrent_hash: "658edab6af0b424e62fefec0e39dbe2ac55b9ae3".to_string(),
             torrent_id: "2142".to_string(),
             tracker: "".to_string(),
             comment: "".to_string(),
@@ -151,7 +152,8 @@ async fn test_get_api_peer_stats_by_hash() {
         },
         Torrent {
             name: "Test invalid".to_string(),
-            torrent_hash: "INVALIDHASH123".to_string(),
+            // СТРОКА НИЖЕ ИЗМЕНЕНА: хеш переведен в нижний регистр
+            torrent_hash: "invalidhash123".to_string(),
             torrent_id: "9999999".to_string(),
             tracker: "".to_string(),
             comment: "".to_string(),
@@ -165,7 +167,7 @@ async fn test_get_api_peer_stats_by_hash() {
         },
     ];
 
-    let result = get_api_peer_stats_by_hash_async(&mut torrents).await;
+    let result = get_api_peer_stats_by_hash_async(&mut torrents, 1).await;
 
     assert!(result.is_ok());
 

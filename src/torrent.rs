@@ -9,7 +9,7 @@ pub struct Torrent {
     pub comment: String,
     pub state: String,
     pub category: String,
-    pub tags: String, // <-- ДОБАВЛЕНО
+    pub tags: String,
     pub size: u64,
     pub seeders: u32,
     pub leechers: u32,
@@ -25,7 +25,7 @@ impl fmt::Debug for Torrent {
         let size_mb = self.size / (1024 * 1024);
 
         // Используем `debug_struct` для создания строки
-        // (ИЗМЕНЕНО) Собираем в `mut debug_struct`, чтобы добавить теги опционально
+        // Собираем в `mut debug_struct`, чтобы добавить теги опционально
         let mut debug_struct = f.debug_struct("Torrent");
 
         debug_struct
@@ -37,7 +37,7 @@ impl fmt::Debug for Torrent {
             .field("size_mb", &size_mb)
             .field("category", &self.category);
 
-        // (ИЗМЕНЕНО) Добавляем теги, только если они не пустые
+        // Добавляем теги, только если они не пустые
         if !self.tags.is_empty() {
             debug_struct.field("tags", &self.tags);
         }
@@ -67,7 +67,7 @@ impl fmt::Display for Torrent {
             self.leechers
         )?;
 
-        // (ИЗМЕНЕНО) Добавляем теги, если они есть
+        // Добавляем теги, если они есть
         if !self.tags.is_empty() {
             write!(f, "\n  - Теги: {}", self.tags)?;
         }
