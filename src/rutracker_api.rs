@@ -247,3 +247,30 @@ pub async fn download_torrent(
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_torrent_id_from_comment() {
+        assert_eq!(
+            extract_torrent_id_from_comment("https://rutracker.org/forum/viewtopic.php?t=1234567"),
+            "1234567"
+        );
+        assert_eq!(
+            extract_torrent_id_from_comment("Просто текст t=98765"),
+            "98765"
+        );
+        assert_eq!(extract_torrent_id_from_comment("Без идентификатора"), "");
+    }
+
+    #[test]
+    fn test_extract_invalid_hash() {
+        assert_eq!(
+            extract_invalid_hash("Invalid hash: ABCDEF1234567890"),
+            Some("ABCDEF1234567890")
+        );
+        assert_eq!(extract_invalid_hash("Some other random api error"), None);
+    }
+}

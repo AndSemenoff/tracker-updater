@@ -91,3 +91,31 @@ impl fmt::Display for Torrent {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_torrent_display() {
+        let t = Torrent {
+            name: "Test Ubuntu".into(),
+            torrent_hash: "ABCDEF".into(),
+            torrent_id: "123".into(),
+            tracker: "rutracker".into(),
+            comment: "".into(),
+            state: "paused".into(),
+            category: "linux".into(),
+            tags: "iso".into(),
+            size: 1048576, // 1 MB
+            seeders: 15,
+            leechers: 3,
+            save_path: "/downloads".into(),
+        };
+        let display_output = format!("{}", t);
+
+        assert!(display_output.contains("Размер: 1 MB"));
+        assert!(display_output.contains("Сиды: 15 | Личи: 3"));
+        assert!(display_output.contains("Категория: linux"));
+    }
+}

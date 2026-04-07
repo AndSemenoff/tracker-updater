@@ -309,19 +309,26 @@ async fn test_full_update_scenario() {
     }
 
     for old_id in &old_ids {
-        let (new_hash, new_save_path) = final_ids_map.get(old_id).unwrap();
-        assert!(
-            !old_hashes.contains(new_hash),
-            "Торрент ID {} не обновился",
-            old_id
-        );
+        // Убираем жесткий unwrap() - если тема удалена с рутрекера, торрента не будет
+        if let Some((new_hash, new_save_path)) = final_ids_map.get(old_id) {
+            assert!(
+                !old_hashes.contains(new_hash),
+                "Торрент ID {} не обновился (хеш остался прежним)",
+                old_id
+            );
 
-        let expected_path = if *old_id == id_1 {
-            &abs_save_path_1
+            let expected_path = if *old_id == id_1 {
+                &abs_save_path_1
+            } else {
+                &abs_save_path_2
+            };
+            assert_eq!(new_save_path, expected_path, "Путь сохранения изменился!");
         } else {
-            &abs_save_path_2
-        };
-        assert_eq!(new_save_path, expected_path, "Путь сохранения изменился!");
+            log::warn!(
+                "Торрент ID {} был удален с Rutracker, проверка обновления пропускается",
+                old_id
+            );
+        }
     }
 
     log::info!("--- 4. Фаза Очистки ---");

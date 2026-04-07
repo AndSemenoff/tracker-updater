@@ -200,13 +200,25 @@ bb_session_cookie = "СЮДА_ВСТАВИТЬ_СКОПИРОВАННОЕ_ЗНА
 6.  Запустите исполняемый файл.
 
 ## Планы
-- Дописать файл readme.md
 - Работа с несколькими qbittorrent клиентами
+- Обработка ошибок авторизации
 
 ## Тестирование
 
-- тестируем основную логику командой `cargo test --test test_update_logic -- --ignored --nocapture`, при этом устаревшие торренты лежат в tests/test-files. Они должны называться `old1.torrent` и `old2.torrent`. Они не содержатся в проекте на github.
-- тестируем qbit api командой `cargo test --test test_qbit_api_fields -- --ignored --nocapture`
+- **Модульные тесты** (быстрая проверка внутренней логики парсинга и форматов):
+  ```sh
+  cargo test --lib
+  ```
+
+- **Интеграционные тесты** (тестирование основной логики через реальный qBittorrent и API) 
+  ```bash
+  cargo test --test test_update_logic -- --ignored --nocapture
+  ``` 
+  при этом устаревшие торренты лежат в tests/test-files. Они должны называться `old1.torrent` и `old2.torrent`. Они не содержатся в проекте на github.
+- **Тесты структуры API qBittorrent:** 
+    ```bash
+    cargo test --test test_qbit_api_fields -- --ignored --nocapture
+    ```
 
 ## Разработчикам
 
