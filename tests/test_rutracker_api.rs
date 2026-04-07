@@ -1,4 +1,5 @@
 // tests/test_rutracker_api.rs
+// cargo test --test test_rutracker_api -- --test-threads=1
 use tracker_updater::rutracker_api::get_api_peer_stats_by_hash_async;
 use tracker_updater::torrent::Torrent;
 

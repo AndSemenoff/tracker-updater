@@ -3,12 +3,14 @@
 // cargo test --test test_update_logic -- test_full_update_scenario --ignored --nocapture
 // cargo test --test test_update_logic -- test_update_preserves_category_and_tags --ignored --nocapture
 // cargo test --test test_update_logic -- test_dry_run_scenario --ignored --nocapture
+// cargo test --test test_update_logic -- --ignored --test-threads=1
 
 use config::{Config as ConfigBuilder, File};
 use qbit_rs::{
     model::{AddTorrentArg, Credential, NonEmptyStr, TorrentFile, TorrentSource},
     Qbit,
 };
+use std::sync::Once;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -36,15 +38,32 @@ fn setup_config() -> Config {
         .build()
         .expect("Ошибка загрузки config.toml. Убедитесь, что он существует в корне проекта.");
 
-    config_settings
+    // Делаем config изменяемым (mut), чтобы переопределить настройки для тестов
+    let mut config: Config = config_settings
         .try_deserialize::<Config>()
-        .expect("Ошибка парсинга config.toml. Проверьте структуру файла.")
+        .expect("Ошибка парсинга config.toml. Проверьте структуру файла.");
+
+    // ПРИНУДИТЕЛЬНО устанавливаем фильтр по тегу для тестов.
+    // Это гарантирует, что:
+    // 1. Тесты не будут трогать ваши реальные торренты (даже если в config.toml фильтра нет).
+    // 2. Тесты всегда найдут тестовые торренты (даже если в config.toml указан другой тег).
+    config.tag_filter = Some(TEST_TAG.to_string());
+
+    config
 }
 
 async fn setup_client() -> Qbit {
     let config = setup_config();
     let credential = Credential::new(config.qbit.username, config.qbit.password);
     Qbit::new(config.qbit.url.as_str(), credential)
+}
+
+static INIT_LOGGER: Once = Once::new();
+
+fn setup_logger() {
+    INIT_LOGGER.call_once(|| {
+        tracker_updater::init_logger();
+    });
 }
 
 /// Помощник: Добавляет тестовый торрент С КАТЕГОРИЕЙ И ТЕГАМИ
@@ -205,7 +224,7 @@ async fn test_full_update_scenario() {
     if !Path::new(TORRENT_FILE_1).exists() || !Path::new(TORRENT_FILE_2).exists() {
         panic!("Тестовые файлы не найдены.");
     }
-    tracker_updater::init_logger();
+    setup_logger();
 
     let client = setup_client().await;
     let config = setup_config();
@@ -318,7 +337,7 @@ async fn test_update_preserves_category_and_tags() {
     if !Path::new(TORRENT_FILE_1).exists() || !Path::new(TORRENT_FILE_2).exists() {
         panic!("Тестовые файлы не найдены.");
     }
-    tracker_updater::init_logger();
+    setup_logger();
 
     let client = setup_client().await;
     let config = setup_config();
@@ -429,7 +448,7 @@ async fn test_dry_run_scenario() {
     if !Path::new(TORRENT_FILE_1).exists() {
         panic!("Тестовый файл не найден.");
     }
-    tracker_updater::init_logger();
+    setup_logger();
 
     let client = setup_client().await;
     let mut config = setup_config();
