@@ -137,7 +137,7 @@ async fn test_get_api_peer_stats_by_hash() {
     let mut torrents = vec![
         Torrent {
             name: "Test valid".to_string(), // Имя может отличаться в вашем коде
-            // СТРОКА НИЖЕ ИЗМЕНЕНА: хеш переведен в нижний регистр
+            // хеш переведен в нижний регистр
             torrent_hash: "658edab6af0b424e62fefec0e39dbe2ac55b9ae3".to_string(),
             torrent_id: "2142".to_string(),
             tracker: "".to_string(),
@@ -152,7 +152,7 @@ async fn test_get_api_peer_stats_by_hash() {
         },
         Torrent {
             name: "Test invalid".to_string(),
-            // СТРОКА НИЖЕ ИЗМЕНЕНА: хеш переведен в нижний регистр
+            // хеш переведен в нижний регистр
             torrent_hash: "invalidhash123".to_string(),
             torrent_id: "9999999".to_string(),
             tracker: "".to_string(),

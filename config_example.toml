@@ -14,6 +14,8 @@ url = "http://127.0.0.1:8080"
 # Логин и пароль от WebUI qBittorrent
 username = "admin"
 password = "adminadmin"
+# Опционально: обрабатывать только торренты с этим тегом
+# tag_filter = "test-update"
 
 [rutracker]
 # Ваш сессионный cookie с Rutracker.

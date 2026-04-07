@@ -51,6 +51,7 @@ pub struct Config {
     pub dry_run: bool,
     pub qbit: QbitConfig,
     pub rutracker: RutrackerConfig,
+    pub tag_filter: Option<String>,
 }
 
 pub async fn run_helper(config: Config) -> Result<()> {
@@ -66,7 +67,14 @@ pub async fn run_helper(config: Config) -> Result<()> {
     let credential = Credential::new(config.qbit.username.clone(), config.qbit.password.clone());
     let client = Qbit::new(config.qbit.url.as_str(), credential);
 
-    if let Err(e) = process_torrents(&client, &client_for_download, &headers, config.dry_run).await
+    if let Err(e) = process_torrents(
+        &client,
+        &client_for_download,
+        &headers,
+        config.dry_run,
+        config.tag_filter,
+    )
+    .await
     {
         return Err(e).context("❌ Ошибка при обработке торрентов. Убедитесь, что qBittorrent запущен и учетные данные верны.");
     }
@@ -79,8 +87,9 @@ async fn process_torrents(
     client_for_download: &Client,
     headers: &HeaderMap,
     dry_run: bool,
+    tag_filter: Option<String>,
 ) -> Result<()> {
-    let mut my_torrents = match get_qbit_torrents(client).await {
+    let mut my_torrents = match get_qbit_torrents(client, tag_filter).await {
         Ok(torrents) => torrents,
         Err(e) => {
             log::error!("❌ Ошибка при получении списка торрентов: {}", e);
@@ -155,7 +164,7 @@ async fn process_torrents(
     Ok(())
 }
 
-async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
+async fn get_qbit_torrents(client: &Qbit, tag_filter: Option<String>) -> Result<Vec<Torrent>> {
     let torrents_info = client.get_torrent_list(Default::default()).await?;
     log::debug!("--- Обработка торрентов ({} шт.) ---", torrents_info.len());
 
@@ -174,6 +183,15 @@ async fn get_qbit_torrents(client: &Qbit) -> Result<Vec<Torrent>> {
         let tracker = torrent_info.tracker.clone().unwrap_or_default();
         if !tracker.contains("rutracker") {
             continue;
+        }
+
+        if let Some(ref target_tag) = tag_filter {
+            let current_tags = torrent_info.tags.as_deref().unwrap_or_default();
+            // Проверяем, содержит ли строка тегов наш целевой тег
+            if !current_tags.contains(target_tag) {
+                log::trace!("Пропущен (нет тега '{}'): {}", target_tag, name);
+                continue;
+            }
         }
 
         let save_path = torrent_info.save_path.clone().unwrap_or_default();
